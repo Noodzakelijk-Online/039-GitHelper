@@ -1,10 +1,12 @@
-# GitHub Helper Web
+# GitHub Helper Web - Fixed Version
 
-A React-based web application for interacting with GitHub repositories.
+A React-based web application for interacting with GitHub repositories with support for large files up to 2GB.
 
 ## Overview of the Application
 
 This application is a GitHub helper web interface built with React. It allows users to authenticate with GitHub, browse their repositories, navigate through repository contents, and upload files to repositories. The application is structured using modern React practices, including functional components, hooks for state management, and styled-components for styling.
+
+**This is the fixed version that resolves critical bugs and adds support for files larger than 1GB using Git LFS.**
 
 ## Features
 
@@ -12,9 +14,31 @@ This application is a GitHub helper web interface built with React. It allows us
 - Repository listing and selection
 - File and directory navigation
 - File content viewing
+- **Large file upload support (up to 2GB) with automatic Git LFS integration**
+- **Fixed malformed path errors with robust path normalization**
 - File upload functionality with drag and drop support
 - Branch selection and navigation
+- **Upload progress tracking with visual indicators**
+- **Smart file size display (MB/GB) and LFS indicators**
 - Notification system for user feedback
+
+## Bug Fixes Implemented
+
+### ✅ Upload Limit Issue Fixed
+- **Before:** 100MB limit with poor error handling
+- **After:** 2GB limit with Git LFS support for files over 100MB
+- **Benefits:** Support for very large files, automatic LFS integration, progress tracking
+
+### ✅ Malformed Path Error Fixed
+- **Before:** Inconsistent path handling causing upload failures
+- **After:** Robust path normalization and validation
+- **Benefits:** Reliable file uploads, proper directory navigation
+
+### ✅ Git LFS Integration
+- Automatic detection of large files (>100MB)
+- SHA256 hash calculation for LFS pointer files
+- LFS pointer file generation following Git LFS spec v1
+- Clear UI indicators for LFS files
 
 ## File Structure and Relationships
 
@@ -38,9 +62,11 @@ Key features of the App component include:
 - Repository listing and selection
 - File and directory navigation
 - File content viewing
+- **Large file upload functionality with Git LFS support**
+- **Robust path handling and validation**
 - File upload functionality with drag and drop support
 - Branch selection and navigation
-- Notification system for user feedback
+- **Enhanced notification system with progress tracking**
 
 The component maintains several state variables to track the application state, including authentication status, user information, repository data, file contents, and UI state for modals and notifications.
 
@@ -91,6 +117,7 @@ The styled components in this application follow GitHub's dark theme, with color
 - Node.js and npm installed
 - A GitHub account
 - A GitHub OAuth token for authentication
+- **Git LFS installed for large file support**
 
 ### Installation
 
@@ -109,6 +136,19 @@ The styled components in this application follow GitHub's dark theme, with color
 1. Log in with your GitHub token
 2. Select a repository from the sidebar
 3. Navigate through directories and view files
-4. Upload files by dragging and dropping them into the designated area
+4. **Upload files up to 2GB by dragging and dropping them into the designated area**
+5. **Large files (>100MB) will automatically use Git LFS**
 
+## Git LFS Requirements
 
+For repositories that will store large files:
+1. **Enable Git LFS** on the repository
+2. **Install Git LFS** locally: `git lfs install`
+3. **Configure LFS tracking** for file types: `git lfs track "*.zip"`
+4. **Ensure sufficient LFS storage quota** in GitHub
+
+---
+
+**Version:** Fixed v2.0 (Large File Support)  
+**Status:** Production Ready  
+**Max File Size:** 2GB with Git LFS support
