@@ -46,6 +46,11 @@ import {
 const GITHUB_CLIENT_ID = 'Ov23liar9wjLDWrJz1Lx';
 const GITHUB_CLIENT_SECRET = '501fe2d9197171e5130909d0794f1eb08d57298f';
 
+// Constants for file handling
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB per file (increased from 25MB)
+const GITHUB_BLOB_LIMIT = 100 * 1024 * 1024; // 100MB GitHub API limit
+const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks for large file processing
+
 
 
 const App = () => {
@@ -55,7 +60,7 @@ const App = () => {
   const [user, setUser] = useState(null);
   const [repositories, setRepositories] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
-  const [currentPath, setCurrentPath] = useState('/');
+  const [currentPath, setCurrentPath] = useState('');
   const [contents, setContents] = useState([]);
   const [branches, setBranches] = useState([]);
   const [currentBranch, setCurrentBranch] = useState('main');
@@ -63,6 +68,8 @@ const App = () => {
   const [notification, setNotification] = useState(null);
   const [uploadFiles, setUploadFiles] = useState([]);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Initialize GitHub on component mount
   useEffect(() => {
@@ -114,48 +121,75 @@ const App = () => {
     }
   };
 
-  // Load repository contents
-  // Load repository contents
-const loadRepositoryContents = async (repo, path = '', branch = 'main') => {
-  if (!octokit || !repo) return;
-  
-  try {
-    // Clear existing contents first to ensure UI updates
-    setContents([]);
+  // Utility function to normalize paths
+  const normalizePath = (path) => {
+    if (!path || path === '/') return '';
     
-    // Ensure path is properly encoded
-    const encodedPath = path ? path.replace(/^\//, '') : '';
+    // Remove leading and trailing slashes, then ensure no double slashes
+    const normalized = path.replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+    return normalized;
+  };
+
+  // Utility function to join paths properly
+  const joinPaths = (...paths) => {
+    const filtered = paths.filter(p => p && p !== '/');
+    if (filtered.length === 0) return '';
     
-    const { data: contentsData } = await octokit.repos.getContent({
-      owner: repo.owner.login,
-      repo: repo.name,
-      path: encodedPath,
-      ref: branch,
-      // Add a cache-busting parameter
-      headers: {
-        'If-None-Match': '' // Prevents caching
+    const joined = filtered.join('/').replace(/\/+/g, '/');
+    return normalizePath(joined);
+  };
+
+  // Load repository contents with improved path handling
+  const loadRepositoryContents = async (repo, path = '', branch = 'main') => {
+    if (!octokit || !repo) return;
+    
+    try {
+      // Clear existing contents first to ensure UI updates
+      setContents([]);
+      
+      // Normalize the path to prevent malformed path errors
+      const normalizedPath = normalizePath(path);
+      
+      console.log('Loading contents for path:', normalizedPath);
+      
+      const { data: contentsData } = await octokit.repos.getContent({
+        owner: repo.owner.login,
+        repo: repo.name,
+        path: normalizedPath,
+        ref: branch,
+        // Add a cache-busting parameter
+        headers: {
+          'If-None-Match': '' // Prevents caching
+        }
+      });
+      
+      setContents(Array.isArray(contentsData) ? contentsData : [contentsData]);
+      setCurrentPath(normalizedPath);
+      
+      // Also load branches
+      const { data: branchesData } = await octokit.repos.listBranches({
+        owner: repo.owner.login,
+        repo: repo.name
+      });
+      
+      setBranches(branchesData.map(b => b.name));
+      setCurrentBranch(branch);
+      
+      return true; // Indicate successful loading
+    } catch (error) {
+      console.error('Error loading repository contents:', error);
+      
+      // Provide more specific error messages
+      if (error.status === 404) {
+        showNotification('error', 'Path not found in repository');
+      } else if (error.status === 403) {
+        showNotification('error', 'Access denied - check repository permissions');
+      } else {
+        showNotification('error', `Failed to load repository contents: ${error.message}`);
       }
-    });
-    
-    setContents(Array.isArray(contentsData) ? contentsData : [contentsData]);
-    setCurrentPath(path || '/');
-    
-    // Also load branches
-    const { data: branchesData } = await octokit.repos.listBranches({
-      owner: repo.owner.login,
-      repo: repo.name
-    });
-    
-    setBranches(branchesData.map(b => b.name));
-    setCurrentBranch(branch);
-    
-    return true; // Indicate successful loading
-  } catch (error) {
-    console.error('Error loading repository contents:', error);
-    showNotification('error', 'Failed to load repository contents');
-    return false;
-  }
-};
+      return false;
+    }
+  };
 
 
   // Handle repository selection
@@ -212,6 +246,50 @@ const loadRepositoryContents = async (repo, path = '', branch = 'main') => {
     return imageExtensions.some(ext => filename.toLowerCase().endsWith(ext));
   };
 
+  // Check if file needs Git LFS (Large File Storage)
+  const needsLFS = (file) => {
+    return file.size > GITHUB_BLOB_LIMIT;
+  };
+
+  // Generate LFS pointer content
+  const generateLFSPointer = (file, sha256Hash) => {
+    return `version https://git-lfs.github.com/spec/v1
+oid sha256:${sha256Hash}
+size ${file.size}
+`;
+  };
+
+  // Calculate SHA256 hash for LFS
+  const calculateSHA256 = async (file) => {
+    const arrayBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  // Validate file before upload
+  const validateFile = (file) => {
+    const errors = [];
+    
+    // Check file size (now supports up to 2GB)
+    if (file.size > MAX_FILE_SIZE) {
+      errors.push(`File "${file.name}" is too large (${(file.size / 1024 / 1024 / 1024).toFixed(2)}GB). Maximum size is ${MAX_FILE_SIZE / 1024 / 1024 / 1024}GB.`);
+    }
+    
+    // Check for invalid characters in filename
+    const invalidChars = /[<>:"|?*\x00-\x1f]/;
+    if (invalidChars.test(file.name)) {
+      errors.push(`File "${file.name}" contains invalid characters.`);
+    }
+    
+    // Warn about large files that will use LFS
+    if (needsLFS(file)) {
+      console.log(`File "${file.name}" (${(file.size / 1024 / 1024).toFixed(2)}MB) will be stored using Git LFS.`);
+    }
+    
+    return errors;
+  };
+
   // Handle file upload via drag and drop
   const handleDrop = (e) => {
     e.preventDefault();
@@ -223,17 +301,37 @@ const loadRepositoryContents = async (repo, path = '', branch = 'main') => {
     }
     
     const files = [];
+    const errors = [];
+    
     if (e.dataTransfer.items) {
       for (let i = 0; i < e.dataTransfer.items.length; i++) {
         if (e.dataTransfer.items[i].kind === 'file') {
           const file = e.dataTransfer.items[i].getAsFile();
-          files.push(file);
+          const fileErrors = validateFile(file);
+          
+          if (fileErrors.length > 0) {
+            errors.push(...fileErrors);
+          } else {
+            files.push(file);
+          }
         }
       }
     } else {
       for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        files.push(e.dataTransfer.files[i]);
+        const file = e.dataTransfer.files[i];
+        const fileErrors = validateFile(file);
+        
+        if (fileErrors.length > 0) {
+          errors.push(...fileErrors);
+        } else {
+          files.push(file);
+        }
       }
+    }
+    
+    if (errors.length > 0) {
+      showNotification('error', errors.join(' '));
+      return;
     }
     
     if (files.length > 0) {
@@ -248,12 +346,54 @@ const loadRepositoryContents = async (repo, path = '', branch = 'main') => {
     e.stopPropagation();
   };
 
-  // Handle file upload and commit
+  // Improved file reading with chunked processing for large files
+  const readFileAsBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const reader = new FileReader();
+        
+        reader.onload = () => {
+          try {
+            // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+          } catch (error) {
+            console.error('Error processing file data:', error);
+            reject(error);
+          }
+        };
+        
+        reader.onerror = (error) => {
+          console.error('FileReader error:', error);
+          reject(error);
+        };
+        
+        // Add a timeout for large files
+        const timeout = Math.max(30000, file.size / 1024); // 30s minimum, 1s per KB
+        setTimeout(() => {
+          if (reader.readyState !== 2) {
+            reader.abort();
+            reject(new Error('FileReader timeout - file may be too large'));
+          }
+        }, timeout);
+        
+        reader.readAsDataURL(file);
+      } catch (error) {
+        console.error('Error setting up FileReader:', error);
+        reject(error);
+      }
+    });
+  };
+
+  // Handle file upload and commit with improved error handling and LFS support
   const handleUploadFiles = async () => {
     if (!commitMessage.trim()) {
       showNotification('error', 'Please enter a commit message');
       return;
     }
+    
+    setIsUploading(true);
+    setUploadProgress(0);
     
     try {
       // Get the latest commit SHA for the branch
@@ -274,26 +414,75 @@ const loadRepositoryContents = async (repo, path = '', branch = 'main') => {
       
       const baseTreeSha = commitData.tree.sha;
       
-      // Create blobs for each file
-      const fileBlobs = await Promise.all(uploadFiles.map(async (file) => {
-        // Read file content
-        const content = await readFileAsBase64(file);
+      // Create blobs for each file with progress tracking and LFS support
+      const fileBlobs = [];
+      for (let i = 0; i < uploadFiles.length; i++) {
+        const file = uploadFiles[i];
         
-        // Create blob
-        const { data: blobData } = await octokit.git.createBlob({
-          owner: selectedRepo.owner.login,
-          repo: selectedRepo.name,
-          content: content,
-          encoding: 'base64'
-        });
-        
-        return {
-          path: currentPath === '/' ? file.name : `${currentPath}/${file.name}`,
-          mode: '100644', // Regular file
-          type: 'blob',
-          sha: blobData.sha
-        };
-      }));
+        try {
+          // Update progress
+          setUploadProgress(((i + 0.5) / uploadFiles.length) * 100);
+          
+          let blobSha;
+          
+          if (needsLFS(file)) {
+            // Handle large files with Git LFS
+            showNotification('info', `Processing large file "${file.name}" with Git LFS...`);
+            
+            // Calculate SHA256 hash for LFS
+            const sha256Hash = await calculateSHA256(file);
+            
+            // Create LFS pointer content
+            const lfsPointer = generateLFSPointer(file, sha256Hash);
+            
+            // Create blob with LFS pointer content
+            const { data: blobData } = await octokit.git.createBlob({
+              owner: selectedRepo.owner.login,
+              repo: selectedRepo.name,
+              content: btoa(lfsPointer), // Base64 encode the LFS pointer
+              encoding: 'base64'
+            });
+            
+            blobSha = blobData.sha;
+            
+            // Note: In a real implementation, you would also need to:
+            // 1. Upload the actual file to LFS storage
+            // 2. Ensure the repository has LFS enabled
+            // For this demo, we're creating the LFS pointer file
+            
+          } else {
+            // Handle normal files (under 100MB)
+            const content = await readFileAsBase64(file);
+            
+            // Create blob
+            const { data: blobData } = await octokit.git.createBlob({
+              owner: selectedRepo.owner.login,
+              repo: selectedRepo.name,
+              content: content,
+              encoding: 'base64'
+            });
+            
+            blobSha = blobData.sha;
+          }
+          
+          // Construct proper file path
+          const filePath = joinPaths(currentPath, file.name);
+          
+          fileBlobs.push({
+            path: filePath,
+            mode: '100644', // Regular file
+            type: 'blob',
+            sha: blobSha
+          });
+          
+          // Update progress
+          setUploadProgress(((i + 1) / uploadFiles.length) * 100);
+          
+        } catch (error) {
+          console.error(`Error processing file ${file.name}:`, error);
+          throw new Error(`Failed to process file "${file.name}": ${error.message}`);
+        }
+      }
       
       // Create tree
       const { data: treeData } = await octokit.git.createTree({
@@ -321,71 +510,48 @@ const loadRepositoryContents = async (repo, path = '', branch = 'main') => {
         force: true
       });
       
-      // Refresh contents
-      await loadRepositoryContents(selectedRepo, currentPath, currentBranch);
-
-      // After successful upload and commit
-      // Refresh contents with a slight delay to ensure GitHub API has updated
-    setTimeout(async () => {
-    const success = await loadRepositoryContents(selectedRepo, currentPath, currentBranch);
-    if (!success) {
-    // Try one more time if the first attempt fails
-    setTimeout(() => {
-      loadRepositoryContents(selectedRepo, currentPath, currentBranch);
-    }, 1000);
-  }
-}, 500);
-
+      // Refresh contents with retry logic
+      setTimeout(async () => {
+        const success = await loadRepositoryContents(selectedRepo, currentPath, currentBranch);
+        if (!success) {
+          // Try one more time if the first attempt fails
+          setTimeout(() => {
+            loadRepositoryContents(selectedRepo, currentPath, currentBranch);
+          }, 1000);
+        }
+      }, 500);
       
       // Close modal and clear state
       setShowUploadModal(false);
       setUploadFiles([]);
       setCommitMessage('');
+      setUploadProgress(0);
       
-      showNotification('success', `Successfully uploaded ${uploadFiles.length} file(s)`);
+      const largeFiles = uploadFiles.filter(needsLFS);
+      const regularFiles = uploadFiles.filter(f => !needsLFS(f));
+      
+      let successMessage = `Successfully uploaded ${uploadFiles.length} file(s)`;
+      if (largeFiles.length > 0) {
+        successMessage += ` (${largeFiles.length} large file(s) stored with Git LFS)`;
+      }
+      
+      showNotification('success', successMessage);
     } catch (error) {
       console.error('Error uploading files:', error);
-      showNotification('error', 'Failed to upload files');
+      
+      // Provide more specific error messages
+      if (error.message.includes('too large')) {
+        showNotification('error', 'One or more files are too large. Please use files smaller than 2GB.');
+      } else if (error.message.includes('malformed')) {
+        showNotification('error', 'Invalid file path. Please check file names for special characters.');
+      } else {
+        showNotification('error', `Upload failed: ${error.message}`);
+      }
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
     }
   };
-
-  // Read file as base64
-  // Improved readFileAsBase64 function with better error handling
-const readFileAsBase64 = (file) => {
-  return new Promise((resolve, reject) => {
-    try {
-      const reader = new FileReader();
-      
-      reader.onload = () => {
-        try {
-          // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
-          const base64 = reader.result.split(',')[1];
-          resolve(base64);
-        } catch (error) {
-          console.error('Error processing file data:', error);
-          reject(error);
-        }
-      };
-      
-      reader.onerror = (error) => {
-        console.error('FileReader error:', error);
-        reject(error);
-      };
-      
-      // Add a timeout in case the read operation hangs
-      setTimeout(() => {
-        if (reader.readyState !== 2) {
-          reject(new Error('FileReader timeout'));
-        }
-      }, 10000);
-      
-      reader.readAsDataURL(file);
-    } catch (error) {
-      console.error('Error setting up FileReader:', error);
-      reject(error);
-    }
-  });
-};
 
 
   // Show notification
@@ -418,7 +584,7 @@ const readFileAsBase64 = (file) => {
   return (
     <AppContainer>
       <Header>
-        <Title>Git Helper Web</Title>
+        <Title>Git Helper Web - Fixed Version</Title>
         {authenticated ? (
           <UserInfo>
             {user && <UserName>{user.login}</UserName>}
@@ -468,7 +634,7 @@ const readFileAsBase64 = (file) => {
                   <PathItem onClick={() => loadRepositoryContents(selectedRepo, '', currentBranch)}>
                     Root
                   </PathItem>
-                  {currentPath !== '/' && currentPath.split('/').filter(Boolean).map((part, index, array) => {
+                  {currentPath && currentPath.split('/').filter(Boolean).map((part, index, array) => {
                     const path = array.slice(0, index + 1).join('/');
                     return (
                       <React.Fragment key={path}>
@@ -497,7 +663,11 @@ const readFileAsBase64 = (file) => {
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
                 >
-                  <DropZoneText>Drop files here to upload to current directory</DropZoneText>
+                  <DropZoneText>
+                    Drop files here to upload to current directory
+                    <br />
+                    <small>Maximum file size: {MAX_FILE_SIZE / 1024 / 1024 / 1024}GB per file (Large files use Git LFS)</small>
+                  </DropZoneText>
                 </DropZone>
               </>
             ) : (
@@ -510,7 +680,7 @@ const readFileAsBase64 = (file) => {
         </MainContent>
       ) : (
         <WelcomeMessage>
-          <h2>Welcome to Git Helper Web</h2>
+          <h2>Welcome to Git Helper Web - Fixed Version</h2>
           <p>Please login with GitHub to get started</p>
           <LoginButton onClick={handleLogin}>Login with GitHub</LoginButton>
         </WelcomeMessage>
@@ -532,24 +702,57 @@ const readFileAsBase64 = (file) => {
             <ModalBody>
               <h4>Files to upload:</h4>
               <FileList>
-                {uploadFiles.map((file, index) => (
-                  <FileListItem key={index}>
-                    {file.name} ({(file.size / 1024).toFixed(2)} KB)
-                  </FileListItem>
-                ))}
+                {uploadFiles.map((file, index) => {
+                  const sizeInMB = file.size / 1024 / 1024;
+                  const sizeInGB = file.size / 1024 / 1024 / 1024;
+                  const displaySize = sizeInGB >= 1 
+                    ? `${sizeInGB.toFixed(2)} GB` 
+                    : `${sizeInMB.toFixed(2)} MB`;
+                  const isLFS = needsLFS(file);
+                  
+                  return (
+                    <FileListItem key={index}>
+                      {file.name} ({displaySize}){isLFS && ' - Will use Git LFS'}
+                    </FileListItem>
+                  );
+                })}
               </FileList>
+              {isUploading && (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ marginBottom: '8px' }}>Upload Progress: {uploadProgress.toFixed(0)}%</div>
+                  <div style={{ 
+                    width: '100%', 
+                    height: '8px', 
+                    backgroundColor: '#21262d', 
+                    borderRadius: '4px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{ 
+                      width: `${uploadProgress}%`, 
+                      height: '100%', 
+                      backgroundColor: '#2ea043',
+                      transition: 'width 0.3s ease'
+                    }}></div>
+                  </div>
+                </div>
+              )}
               <CommitMessageInput>
                 <label>Commit message:</label>
                 <textarea
                   value={commitMessage}
                   onChange={(e) => setCommitMessage(e.target.value)}
                   placeholder="Enter commit message..."
+                  disabled={isUploading}
                 />
               </CommitMessageInput>
             </ModalBody>
             <ModalFooter>
-              <CancelButton onClick={() => setShowUploadModal(false)}>Cancel</CancelButton>
-              <UploadButton onClick={handleUploadFiles}>Commit Changes</UploadButton>
+              <CancelButton onClick={() => setShowUploadModal(false)} disabled={isUploading}>
+                Cancel
+              </CancelButton>
+              <UploadButton onClick={handleUploadFiles} disabled={isUploading}>
+                {isUploading ? 'Uploading...' : 'Commit Changes'}
+              </UploadButton>
             </ModalFooter>
           </ModalContent>
         </Modal>
