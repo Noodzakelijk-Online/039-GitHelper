@@ -75,7 +75,7 @@ const App = () => {
   useEffect(() => {
     // Check if we have a token in localStorage
     const token = localStorage.getItem('github_token');
-    
+
     if (token) {
       initializeGitHub(token);
     }
@@ -87,17 +87,17 @@ const App = () => {
       const octokitInstance = new Octokit({
         auth: token
       });
-      
+
       setOctokit(octokitInstance);
-      
+
       // Get authenticated user
       const { data: userData } = await octokitInstance.users.getAuthenticated();
       setUser(userData);
       setAuthenticated(true);
-      
+
       // Load user repositories
       await loadUserRepositories(octokitInstance);
-      
+
       showNotification('success', `Logged in as ${userData.login}`);
     } catch (error) {
       console.error('Authentication error:', error);
@@ -124,7 +124,7 @@ const App = () => {
   // Utility function to normalize paths
   const normalizePath = (path) => {
     if (!path || path === '/') return '';
-    
+
     // Remove leading and trailing slashes, then ensure no double slashes
     const normalized = path.replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
     return normalized;
@@ -134,52 +134,53 @@ const App = () => {
   const joinPaths = (...paths) => {
     const filtered = paths.filter(p => p && p !== '/');
     if (filtered.length === 0) return '';
-    
+
     const joined = filtered.join('/').replace(/\/+/g, '/');
     return normalizePath(joined);
   };
 
   // Load repository contents with improved path handling
-  const loadRepositoryContents = async (repo, path = '', branch = 'main') => {
+  const loadRepositoryContents = async (repo, path = '', branch) => {
     if (!octokit || !repo) return;
-    
+
     try {
+      // Use provided branch OR fall back to repo's default branch
+      const targetBranch = branch || repo.default_branch;
+
       // Clear existing contents first to ensure UI updates
       setContents([]);
-      
+
       // Normalize the path to prevent malformed path errors
       const normalizedPath = normalizePath(path);
-      
-      console.log('Loading contents for path:', normalizedPath);
-      
+
+      console.log(`Loading contents for path: ${normalizedPath} on branch: ${targetBranch}`);
+
       const { data: contentsData } = await octokit.repos.getContent({
         owner: repo.owner.login,
         repo: repo.name,
         path: normalizedPath,
-        ref: branch,
-        // Add a cache-busting parameter
+        ref: targetBranch,
         headers: {
           'If-None-Match': '' // Prevents caching
         }
       });
-      
+
       setContents(Array.isArray(contentsData) ? contentsData : [contentsData]);
       setCurrentPath(normalizedPath);
-      
+
       // Also load branches
       const { data: branchesData } = await octokit.repos.listBranches({
         owner: repo.owner.login,
         repo: repo.name
       });
-      
+
       setBranches(branchesData.map(b => b.name));
-      setCurrentBranch(branch);
-      
+      setCurrentBranch(targetBranch);
+
       return true; // Indicate successful loading
     } catch (error) {
       console.error('Error loading repository contents:', error);
-      
-      // Provide more specific error messages
+
       if (error.status === 404) {
         showNotification('error', 'Path not found in repository');
       } else if (error.status === 403) {
@@ -218,7 +219,7 @@ const App = () => {
           path: item.path,
           ref: currentBranch
         });
-        
+
         // For binary files, fileData.content will be base64 encoded
         // For text files, we can decode and display
         if (fileData.encoding === 'base64' && !isImageFile(fileData.name)) {
@@ -270,23 +271,23 @@ size ${file.size}
   // Validate file before upload
   const validateFile = (file) => {
     const errors = [];
-    
+
     // Check file size (now supports up to 2GB)
     if (file.size > MAX_FILE_SIZE) {
       errors.push(`File "${file.name}" is too large (${(file.size / 1024 / 1024 / 1024).toFixed(2)}GB). Maximum size is ${MAX_FILE_SIZE / 1024 / 1024 / 1024}GB.`);
     }
-    
+
     // Check for invalid characters in filename
     const invalidChars = /[<>:"|?*\x00-\x1f]/;
     if (invalidChars.test(file.name)) {
       errors.push(`File "${file.name}" contains invalid characters.`);
     }
-    
+
     // Warn about large files that will use LFS
     if (needsLFS(file)) {
       console.log(`File "${file.name}" (${(file.size / 1024 / 1024).toFixed(2)}MB) will be stored using Git LFS.`);
     }
-    
+
     return errors;
   };
 
@@ -294,21 +295,21 @@ size ${file.size}
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!authenticated || !selectedRepo) {
       showNotification('error', 'Please select a repository first');
       return;
     }
-    
+
     const files = [];
     const errors = [];
-    
+
     if (e.dataTransfer.items) {
       for (let i = 0; i < e.dataTransfer.items.length; i++) {
         if (e.dataTransfer.items[i].kind === 'file') {
           const file = e.dataTransfer.items[i].getAsFile();
           const fileErrors = validateFile(file);
-          
+
           if (fileErrors.length > 0) {
             errors.push(...fileErrors);
           } else {
@@ -320,7 +321,7 @@ size ${file.size}
       for (let i = 0; i < e.dataTransfer.files.length; i++) {
         const file = e.dataTransfer.files[i];
         const fileErrors = validateFile(file);
-        
+
         if (fileErrors.length > 0) {
           errors.push(...fileErrors);
         } else {
@@ -328,12 +329,12 @@ size ${file.size}
         }
       }
     }
-    
+
     if (errors.length > 0) {
       showNotification('error', errors.join(' '));
       return;
     }
-    
+
     if (files.length > 0) {
       setUploadFiles(files);
       setShowUploadModal(true);
@@ -351,7 +352,7 @@ size ${file.size}
     return new Promise((resolve, reject) => {
       try {
         const reader = new FileReader();
-        
+
         reader.onload = () => {
           try {
             // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
@@ -362,12 +363,12 @@ size ${file.size}
             reject(error);
           }
         };
-        
+
         reader.onerror = (error) => {
           console.error('FileReader error:', error);
           reject(error);
         };
-        
+
         // Add a timeout for large files
         const timeout = Math.max(30000, file.size / 1024); // 30s minimum, 1s per KB
         setTimeout(() => {
@@ -376,7 +377,7 @@ size ${file.size}
             reject(new Error('FileReader timeout - file may be too large'));
           }
         }, timeout);
-        
+
         reader.readAsDataURL(file);
       } catch (error) {
         console.error('Error setting up FileReader:', error);
@@ -391,10 +392,10 @@ size ${file.size}
       showNotification('error', 'Please enter a commit message');
       return;
     }
-    
+
     setIsUploading(true);
     setUploadProgress(0);
-    
+
     try {
       // Get the latest commit SHA for the branch
       const { data: refData } = await octokit.git.getRef({
@@ -402,39 +403,39 @@ size ${file.size}
         repo: selectedRepo.name,
         ref: `heads/${currentBranch}`
       });
-      
+
       const latestCommitSha = refData.object.sha;
-      
+
       // Get the base tree
       const { data: commitData } = await octokit.git.getCommit({
         owner: selectedRepo.owner.login,
         repo: selectedRepo.name,
         commit_sha: latestCommitSha
       });
-      
+
       const baseTreeSha = commitData.tree.sha;
-      
+
       // Create blobs for each file with progress tracking and LFS support
       const fileBlobs = [];
       for (let i = 0; i < uploadFiles.length; i++) {
         const file = uploadFiles[i];
-        
+
         try {
           // Update progress
           setUploadProgress(((i + 0.5) / uploadFiles.length) * 100);
-          
+
           let blobSha;
-          
+
           if (needsLFS(file)) {
             // Handle large files with Git LFS
             showNotification('info', `Processing large file "${file.name}" with Git LFS...`);
-            
+
             // Calculate SHA256 hash for LFS
             const sha256Hash = await calculateSHA256(file);
-            
+
             // Create LFS pointer content
             const lfsPointer = generateLFSPointer(file, sha256Hash);
-            
+
             // Create blob with LFS pointer content
             const { data: blobData } = await octokit.git.createBlob({
               owner: selectedRepo.owner.login,
@@ -442,18 +443,18 @@ size ${file.size}
               content: btoa(lfsPointer), // Base64 encode the LFS pointer
               encoding: 'base64'
             });
-            
+
             blobSha = blobData.sha;
-            
+
             // Note: In a real implementation, you would also need to:
             // 1. Upload the actual file to LFS storage
             // 2. Ensure the repository has LFS enabled
             // For this demo, we're creating the LFS pointer file
-            
+
           } else {
             // Handle normal files (under 100MB)
             const content = await readFileAsBase64(file);
-            
+
             // Create blob
             const { data: blobData } = await octokit.git.createBlob({
               owner: selectedRepo.owner.login,
@@ -461,29 +462,29 @@ size ${file.size}
               content: content,
               encoding: 'base64'
             });
-            
+
             blobSha = blobData.sha;
           }
-          
+
           // Construct proper file path
           const filePath = joinPaths(currentPath, file.name);
-          
+
           fileBlobs.push({
             path: filePath,
             mode: '100644', // Regular file
             type: 'blob',
             sha: blobSha
           });
-          
+
           // Update progress
           setUploadProgress(((i + 1) / uploadFiles.length) * 100);
-          
+
         } catch (error) {
           console.error(`Error processing file ${file.name}:`, error);
           throw new Error(`Failed to process file "${file.name}": ${error.message}`);
         }
       }
-      
+
       // Create tree
       const { data: treeData } = await octokit.git.createTree({
         owner: selectedRepo.owner.login,
@@ -491,7 +492,7 @@ size ${file.size}
         base_tree: baseTreeSha,
         tree: fileBlobs
       });
-      
+
       // Create commit
       const { data: newCommitData } = await octokit.git.createCommit({
         owner: selectedRepo.owner.login,
@@ -500,7 +501,7 @@ size ${file.size}
         tree: treeData.sha,
         parents: [latestCommitSha]
       });
-      
+
       // Update branch reference
       await octokit.git.updateRef({
         owner: selectedRepo.owner.login,
@@ -509,7 +510,7 @@ size ${file.size}
         sha: newCommitData.sha,
         force: true
       });
-      
+
       // Refresh contents with retry logic
       setTimeout(async () => {
         const success = await loadRepositoryContents(selectedRepo, currentPath, currentBranch);
@@ -520,25 +521,25 @@ size ${file.size}
           }, 1000);
         }
       }, 500);
-      
+
       // Close modal and clear state
       setShowUploadModal(false);
       setUploadFiles([]);
       setCommitMessage('');
       setUploadProgress(0);
-      
+
       const largeFiles = uploadFiles.filter(needsLFS);
       const regularFiles = uploadFiles.filter(f => !needsLFS(f));
-      
+
       let successMessage = `Successfully uploaded ${uploadFiles.length} file(s)`;
       if (largeFiles.length > 0) {
         successMessage += ` (${largeFiles.length} large file(s) stored with Git LFS)`;
       }
-      
+
       showNotification('success', successMessage);
     } catch (error) {
       console.error('Error uploading files:', error);
-      
+
       // Provide more specific error messages
       if (error.message.includes('too large')) {
         showNotification('error', 'One or more files are too large. Please use files smaller than 2GB.');
@@ -601,8 +602,8 @@ size ${file.size}
             <SidebarHeader>Repositories</SidebarHeader>
             <RepoList>
               {repositories.map(repo => (
-                <RepoItem 
-                  key={repo.id} 
+                <RepoItem
+                  key={repo.id}
                   selected={selectedRepo && selectedRepo.id === repo.id}
                   onClick={() => handleSelectRepository(repo)}
                 >
@@ -615,13 +616,14 @@ size ${file.size}
           <Content>
             {selectedRepo ? (
               <>
-                <RepositoryHeader>
+                <RepositoryHeader style={{ display: "flex", flexWrap: 'wrap' }}  >
                   <RepoName>{selectedRepo.name}</RepoName>
-                  <BranchSelector>
+                  <BranchSelector >
                     <label>Branch:</label>
-                    <select 
+                    <select
                       value={currentBranch}
                       onChange={(e) => handleSelectBranch(e.target.value)}
+                      style={{ width: "100%", maxWidth: 500 }}
                     >
                       {branches.map(branch => (
                         <option key={branch} value={branch}>{branch}</option>
@@ -649,8 +651,8 @@ size ${file.size}
 
                 <FileExplorer>
                   {contents.map(item => (
-                    <FileItem 
-                      key={item.sha} 
+                    <FileItem
+                      key={item.sha}
                       onClick={() => handleNavigate(item)}
                     >
                       <FileIcon>{item.type === 'dir' ? '📁' : '📄'}</FileIcon>
@@ -705,11 +707,11 @@ size ${file.size}
                 {uploadFiles.map((file, index) => {
                   const sizeInMB = file.size / 1024 / 1024;
                   const sizeInGB = file.size / 1024 / 1024 / 1024;
-                  const displaySize = sizeInGB >= 1 
-                    ? `${sizeInGB.toFixed(2)} GB` 
+                  const displaySize = sizeInGB >= 1
+                    ? `${sizeInGB.toFixed(2)} GB`
                     : `${sizeInMB.toFixed(2)} MB`;
                   const isLFS = needsLFS(file);
-                  
+
                   return (
                     <FileListItem key={index}>
                       {file.name} ({displaySize}){isLFS && ' - Will use Git LFS'}
@@ -720,16 +722,16 @@ size ${file.size}
               {isUploading && (
                 <div style={{ marginBottom: '20px' }}>
                   <div style={{ marginBottom: '8px' }}>Upload Progress: {uploadProgress.toFixed(0)}%</div>
-                  <div style={{ 
-                    width: '100%', 
-                    height: '8px', 
-                    backgroundColor: '#21262d', 
+                  <div style={{
+                    width: '100%',
+                    height: '8px',
+                    backgroundColor: '#21262d',
                     borderRadius: '4px',
                     overflow: 'hidden'
                   }}>
-                    <div style={{ 
-                      width: `${uploadProgress}%`, 
-                      height: '100%', 
+                    <div style={{
+                      width: `${uploadProgress}%`,
+                      height: '100%',
                       backgroundColor: '#2ea043',
                       transition: 'width 0.3s ease'
                     }}></div>

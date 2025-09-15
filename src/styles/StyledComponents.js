@@ -603,7 +603,7 @@ export const Notification = styled.div`
     props.type === 'success' ? colors.accent.green : 
     props.type === 'info' ? colors.accent.blue : 
     colors.accent.red};
-  z-index: 1000;
+  z-index: 1001;
   display: flex;
   align-items: center;
   animation: ${slideIn} 0.3s ease-out;
