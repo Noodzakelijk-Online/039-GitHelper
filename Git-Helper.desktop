@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Git Helper Tool
+Comment=Easy-to-use GitHub interface with drag & drop functionality
+Exec=bash -c "cd '%k' && ./start_git_helper.sh"
+Icon=applications-internet
+Terminal=true
+Categories=Development;WebDevelopment;
+StartupNotify=true
+Path=%k
