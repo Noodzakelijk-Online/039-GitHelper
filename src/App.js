@@ -41,17 +41,10 @@ import {
   UploadButton
 } from './styles/StyledComponents';
 
-// GitHub OAuth App credentials would normally be stored securely
-// For demo purposes, we're using placeholder values
-const GITHUB_CLIENT_ID = 'Ov23liar9wjLDWrJz1Lx';
-const GITHUB_CLIENT_SECRET = '501fe2d9197171e5130909d0794f1eb08d57298f';
-
 // Constants for file handling
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB per file (increased from 25MB)
 const GITHUB_BLOB_LIMIT = 100 * 1024 * 1024; // 100MB GitHub API limit
 const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks for large file processing
-
-
 
 const App = () => {
   // State variables
@@ -75,7 +68,6 @@ const App = () => {
   useEffect(() => {
     // Check if we have a token in localStorage
     const token = localStorage.getItem('github_token');
-
     if (token) {
       initializeGitHub(token);
     }
@@ -110,10 +102,10 @@ const App = () => {
   // Load user repositories
   const loadUserRepositories = async (octokitInstance) => {
     try {
-      const { data: repos } = await octokitInstance.repos.listForAuthenticatedUser({
-        sort: 'updated',
-        per_page: 100
-      });
+      const repos = await octokitInstance.paginate(
+        octokitInstance.repos.listForAuthenticatedUser,
+        {per_page: 100, sort: 'updated'}
+      );
       setRepositories(repos);
     } catch (error) {
       console.error('Error loading repositories:', error);
