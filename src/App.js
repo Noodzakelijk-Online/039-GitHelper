@@ -43,7 +43,7 @@ import {
 
 // Constants for file handling
 const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB per file (increased from 25MB)
-const GITHUB_BLOB_LIMIT = 100 * 1024 * 1024; // 100MB GitHub API limit
+const GITHUB_BLOB_LIMIT = 35 * 1024 * 1024; // 35MB - GitHub API blob creation limit (base64 encoding adds ~33% overhead)
 const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks for large file processing
 
 const App = () => {
@@ -106,7 +106,11 @@ const App = () => {
         octokitInstance.repos.listForAuthenticatedUser,
         {per_page: 100, sort: 'updated'}
       );
-      setRepositories(repos);
+      // Sort repositories by name (numeric-aware sorting for names like 001, 002, 003...)
+      const sortedRepos = repos.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+      );
+      setRepositories(sortedRepos);
     } catch (error) {
       console.error('Error loading repositories:', error);
       showNotification('error', 'Failed to load repositories');
@@ -264,20 +268,17 @@ size ${file.size}
   const validateFile = (file) => {
     const errors = [];
 
-    // Check file size (now supports up to 2GB)
-    if (file.size > MAX_FILE_SIZE) {
-      errors.push(`File "${file.name}" is too large (${(file.size / 1024 / 1024 / 1024).toFixed(2)}GB). Maximum size is ${MAX_FILE_SIZE / 1024 / 1024 / 1024}GB.`);
+    // Check file size against GitHub API blob limit
+    if (file.size > GITHUB_BLOB_LIMIT) {
+      const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+      const limitMB = (GITHUB_BLOB_LIMIT / 1024 / 1024).toFixed(0);
+      errors.push(`File "${file.name}" (${fileSizeMB}MB) exceeds the ${limitMB}MB limit. Large files require Git LFS via command line.`);
     }
 
     // Check for invalid characters in filename
     const invalidChars = /[<>:"|?*\x00-\x1f]/;
     if (invalidChars.test(file.name)) {
       errors.push(`File "${file.name}" contains invalid characters.`);
-    }
-
-    // Warn about large files that will use LFS
-    if (needsLFS(file)) {
-      console.log(`File "${file.name}" (${(file.size / 1024 / 1024).toFixed(2)}MB) will be stored using Git LFS.`);
     }
 
     return errors;
@@ -419,32 +420,17 @@ size ${file.size}
           let blobSha;
 
           if (needsLFS(file)) {
-            // Handle large files with Git LFS
-            showNotification('info', `Processing large file "${file.name}" with Git LFS...`);
-
-            // Calculate SHA256 hash for LFS
-            const sha256Hash = await calculateSHA256(file);
-
-            // Create LFS pointer content
-            const lfsPointer = generateLFSPointer(file, sha256Hash);
-
-            // Create blob with LFS pointer content
-            const { data: blobData } = await octokit.git.createBlob({
-              owner: selectedRepo.owner.login,
-              repo: selectedRepo.name,
-              content: btoa(lfsPointer), // Base64 encode the LFS pointer
-              encoding: 'base64'
-            });
-
-            blobSha = blobData.sha;
-
-            // Note: In a real implementation, you would also need to:
-            // 1. Upload the actual file to LFS storage
-            // 2. Ensure the repository has LFS enabled
-            // For this demo, we're creating the LFS pointer file
-
+            // Files exceeding the GitHub API blob limit cannot be uploaded via web
+            // Git LFS upload is not supported in this web app
+            const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+            const limitMB = (GITHUB_BLOB_LIMIT / 1024 / 1024).toFixed(0);
+            throw new Error(
+              `File "${file.name}" (${fileSizeMB}MB) exceeds the ${limitMB}MB limit. ` +
+              `Large files require Git LFS, which is not supported via web upload. ` +
+              `Please use git command line to push large files.`
+            );
           } else {
-            // Handle normal files (under 100MB)
+            // Handle normal files (under 35MB GitHub API limit)
             const content = await readFileAsBase64(file);
 
             // Create blob
@@ -520,21 +506,13 @@ size ${file.size}
       setCommitMessage('');
       setUploadProgress(0);
 
-      const largeFiles = uploadFiles.filter(needsLFS);
-      const regularFiles = uploadFiles.filter(f => !needsLFS(f));
-
-      let successMessage = `Successfully uploaded ${uploadFiles.length} file(s)`;
-      if (largeFiles.length > 0) {
-        successMessage += ` (${largeFiles.length} large file(s) stored with Git LFS)`;
-      }
-
-      showNotification('success', successMessage);
+      showNotification('success', `Successfully uploaded ${uploadFiles.length} file(s)`);
     } catch (error) {
       console.error('Error uploading files:', error);
 
       // Provide more specific error messages
-      if (error.message.includes('too large')) {
-        showNotification('error', 'One or more files are too large. Please use files smaller than 2GB.');
+      if (error.message.includes('exceeds the') || error.message.includes('too large')) {
+        showNotification('error', error.message);
       } else if (error.message.includes('malformed')) {
         showNotification('error', 'Invalid file path. Please check file names for special characters.');
       } else {
@@ -550,7 +528,9 @@ size ${file.size}
   // Show notification
   const showNotification = (type, message) => {
     setNotification({ type, message });
-    setTimeout(() => setNotification(null), 5000);
+    // Info and warning messages display longer for better readability
+    const duration = (type === 'info' || type === 'warning') ? 8000 : 5000;
+    setTimeout(() => setNotification(null), duration);
   };
 
   // Handle login
@@ -660,7 +640,7 @@ size ${file.size}
                   <DropZoneText>
                     Drop files here to upload to current directory
                     <br />
-                    <small>Maximum file size: {MAX_FILE_SIZE / 1024 / 1024 / 1024}GB per file (Large files use Git LFS)</small>
+                    <small>Maximum file size: {GITHUB_BLOB_LIMIT / 1024 / 1024}MB per file</small>
                   </DropZoneText>
                 </DropZone>
               </>
@@ -702,11 +682,11 @@ size ${file.size}
                   const displaySize = sizeInGB >= 1
                     ? `${sizeInGB.toFixed(2)} GB`
                     : `${sizeInMB.toFixed(2)} MB`;
-                  const isLFS = needsLFS(file);
+                  const exceedsLimit = needsLFS(file);
 
                   return (
-                    <FileListItem key={index}>
-                      {file.name} ({displaySize}){isLFS && ' - Will use Git LFS'}
+                    <FileListItem key={index} style={exceedsLimit ? { color: '#f85149' } : {}}>
+                      {file.name} ({displaySize}){exceedsLimit && ' - Exceeds size limit'}
                     </FileListItem>
                   );
                 })}
