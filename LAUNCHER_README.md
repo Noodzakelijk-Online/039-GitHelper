@@ -1,57 +1,64 @@
-# 🚀 Git Helper - Easy Launcher Guide
+# 🚀 Git Helper v3.1 - Easy Launcher Guide
 
-This Git Helper tool now includes **noob-friendly** launcher scripts that make it super easy to start the application with just a double-click!
+This Git Helper tool includes multiple **noob-friendly** ways to start the application with just a double-click!
 
-## 📁 Launcher Files
+## 📁 Launcher Options
 
-### For Windows Users:
-- **`START_GIT_HELPER.bat`** - Double-click this file to start the application
+### Option 1: Windows Executable (Recommended for Windows)
+- **`myapp.exe`** - Standalone executable, no Node.js required!
+- Just double-click and it works!
 
-### For Linux/Mac Users:
-- **`start_git_helper.sh`** - Double-click this file to start the application
+### Option 2: Batch Script (Windows)
+- **`START_GIT_HELPER.bat`** - Requires Node.js installed
 
-## 🎯 How to Use (Super Simple!)
+### Option 3: Shell Script (Linux/Mac)
+- **`start_git_helper.sh`** - Requires Node.js installed
 
-### Windows:
-1. **Double-click** `START_GIT_HELPER.bat`
-2. Wait for the application to start (may take a moment on first run)
-3. Your browser will automatically open to the Git Helper tool
+---
+
+## 🎯 How to Use
+
+### Using myapp.exe (Easiest - Windows Only):
+1. **Double-click** `myapp.exe`
+2. Browser opens automatically to `http://localhost:3000`
+3. Login with your GitHub token
+4. Start uploading files!
+
+**Note:** No installation required! The exe includes everything needed.
+
+### Using Batch/Shell Scripts:
+1. **Double-click** the appropriate launcher
+2. Wait for dependencies to install (first run only)
+3. Browser opens automatically
 4. Start using the tool!
 
-### Linux/Mac:
-1. **Double-click** `start_git_helper.sh`
-2. If prompted, choose "Run in Terminal" or "Execute"
-3. Wait for the application to start
-4. Your browser will automatically open to the Git Helper tool
-5. Start using the tool!
+---
 
-## ✨ What the Launchers Do Automatically
+## ✨ v3.1 Features Available
 
-### 🔧 **Dependency Management:**
-- Checks if Node.js is installed
-- Automatically installs npm dependencies if needed
-- Shows clear error messages if something is missing
+All launchers provide access to these features:
 
-### 🌐 **Browser Integration:**
-- Automatically opens your default browser
-- Navigates to the correct URL (http://localhost:3000)
-- Provides fallback instructions if auto-open fails
+### 🔄 Auto-Enable Git LFS
+- Upload files up to **2GB**
+- LFS is configured **automatically** - no manual setup!
+- Common file patterns pre-configured
 
-### 📊 **User-Friendly Interface:**
-- Colorful terminal output with clear status messages
-- Progress indicators during installation
-- Easy-to-understand error messages
-- Graceful shutdown handling
+### 📦 ZIP File Extraction
+- Drop a `.zip` file and it's automatically extracted
+- Individual files uploaded preserving folder structure
 
-### 🛡️ **Error Handling:**
-- Checks for Node.js installation
-- Validates npm availability
-- Handles network issues during dependency installation
-- Provides helpful troubleshooting information
+### 📁 Multi-File Upload
+- Select multiple files at once
+- All files are properly uploaded
+
+---
 
 ## 📋 Prerequisites
 
-### Required (Auto-checked by launchers):
+### For myapp.exe:
+- **None!** Just double-click and run.
+
+### For Batch/Shell Scripts:
 - **Node.js** (version 14 or higher)
 - **npm** (usually comes with Node.js)
 - **Internet connection** (for first-time dependency installation)
@@ -61,59 +68,85 @@ This Git Helper tool now includes **noob-friendly** launcher scripts that make i
 - **Ubuntu/Debian:** `sudo apt install nodejs npm`
 - **macOS with Homebrew:** `brew install node`
 
+---
+
 ## 🎮 First-Time Usage
 
+### With myapp.exe:
+1. **Double-click** `myapp.exe`
+2. **Browser opens** automatically
+3. **Login** with GitHub token
+4. **Done!**
+
+### With Scripts:
 1. **Extract** the Git Helper files to a folder
-2. **Double-click** the appropriate launcher for your system:
-   - Windows: `START_GIT_HELPER.bat`
-   - Linux/Mac: `start_git_helper.sh`
+2. **Double-click** the appropriate launcher
 3. **Wait** for automatic setup (first run may take 2-3 minutes)
-4. **Browser opens** automatically with the Git Helper tool
-5. **Login** with your GitHub token and start using!
+4. **Browser opens** automatically
+5. **Login** with GitHub token and start using!
 
-## 🔄 Subsequent Usage
-
-After the first run, starting the tool is even faster:
-1. **Double-click** the launcher
-2. **Browser opens** in seconds
-3. **Start working** immediately!
+---
 
 ## 🛠️ Troubleshooting
 
-### "Node.js is not installed" Error:
+### myapp.exe Issues:
+
+**"Windows protected your PC" message:**
+- Click "More info" → "Run anyway"
+- This is normal for unsigned executables
+
+**Port 3000 already in use:**
+- Close other applications using port 3000
+- Or wait a moment and try again
+
+**Antivirus blocks the exe:**
+- Add an exception for myapp.exe
+- The exe is safe - it's just a packaged Node.js server
+
+### Script Issues:
+
+**"Node.js is not installed" Error:**
 - Install Node.js from [nodejs.org](https://nodejs.org)
 - Restart your computer after installation
-- Try running the launcher again
 
-### "Failed to install dependencies" Error:
+**"Failed to install dependencies" Error:**
 - Check your internet connection
-- Try running the launcher again
-- If persistent, delete `node_modules` folder and retry
+- Delete `node_modules` folder and retry
 
-### Browser doesn't open automatically:
+**Browser doesn't open automatically:**
 - Manually go to: `http://localhost:3000`
-- The application will be running there
 
-### Permission denied (Linux/Mac):
-- Right-click the `.sh` file → Properties → Permissions → Make executable
-- Or run: `chmod +x start_git_helper.sh`
+**Permission denied (Linux/Mac):**
+- Run: `chmod +x start_git_helper.sh`
+
+---
 
 ## 🎯 Advanced Users
 
-If you prefer the traditional method:
+If you prefer the command line:
 ```bash
 npm install    # Install dependencies
 npm start      # Start the application
 ```
 
-## 🆘 Support
+Or build your own executable:
+```bash
+npm install -g pkg
+pkg server.js --target node18-win-x64 --output myapp.exe
+```
 
-If you encounter any issues:
-1. Check the error messages in the terminal window
-2. Ensure Node.js is properly installed
-3. Verify your internet connection
-4. Try deleting `node_modules` and running the launcher again
+---
+
+## 📊 Comparison of Launch Methods
+
+| Method | Requires Node.js | First Run Time | Subsequent Runs |
+|--------|------------------|----------------|-----------------|
+| myapp.exe | ❌ No | Instant | Instant |
+| Batch/Shell | ✅ Yes | 2-3 minutes | ~5 seconds |
+| npm start | ✅ Yes | 2-3 minutes | ~5 seconds |
 
 ---
 
 **Now you can start the Git Helper tool with just a double-click! 🎉**
+
+**Version:** 3.1 | **Max File Size:** 2GB with auto-enabled Git LFS

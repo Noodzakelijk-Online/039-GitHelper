@@ -1,154 +1,248 @@
-# GitHub Helper Web - Fixed Version
+# Git Helper Web v3.1
 
-A React-based web application for interacting with GitHub repositories with support for large files up to 2GB.
+A React-based web application for uploading files to GitHub repositories with support for large files up to 2GB via automatic Git LFS integration.
 
-## Overview of the Application
+## Quick Start
 
-This application is a GitHub helper web interface built with React. It allows users to authenticate with GitHub, browse their repositories, navigate through repository contents, and upload files to repositories. The application is structured using modern React practices, including functional components, hooks for state management, and styled-components for styling.
+### Option 1: Double-Click Executable (Windows)
+1. Download `myapp.exe` from the repository
+2. Double-click to run
+3. Browser opens automatically to `http://localhost:3000`
+4. Login with your GitHub token and start uploading!
 
-**This is the fixed version that resolves critical bugs and adds support for files larger than 1GB using Git LFS.**
+### Option 2: Run from Source
+```bash
+# Clone the repository
+git clone https://github.com/Noodzakelijk-Online/039-GitHelper.git
+cd 039-GitHelper
 
-## Features
+# Install dependencies
+npm install
 
-- GitHub authentication using OAuth tokens
-- Repository listing and selection
-- File and directory navigation
-- File content viewing
-- **Large file upload support (up to 2GB) with automatic Git LFS integration**
-- **Fixed malformed path errors with robust path normalization**
-- File upload functionality with drag and drop support
-- Branch selection and navigation
-- **Upload progress tracking with visual indicators**
-- **Smart file size display (MB/GB) and LFS indicators**
-- Notification system for user feedback
+# Start the application
+npm start
+```
 
-## Bug Fixes Implemented
-
-### ✅ Upload Limit Issue Fixed
-- **Before:** 100MB limit with poor error handling
-- **After:** 2GB limit with Git LFS support for files over 100MB
-- **Benefits:** Support for very large files, automatic LFS integration, progress tracking
-
-### ✅ Malformed Path Error Fixed
-- **Before:** Inconsistent path handling causing upload failures
-- **After:** Robust path normalization and validation
-- **Benefits:** Reliable file uploads, proper directory navigation
-
-### ✅ Git LFS Integration
-- Automatic detection of large files (>100MB)
-- SHA256 hash calculation for LFS pointer files
-- LFS pointer file generation following Git LFS spec v1
-- Clear UI indicators for LFS files
-
-## File Structure and Relationships
-
-The application consists of three main files:
-
-1. `index.js` - The entry point of the React application
-2. `App.js` - The main application component containing all the business logic
-3. `styles/StyledComponents.js` - A collection of styled components used for UI rendering
-
-### index.js
-
-The index.js file serves as the entry point for the React application. It imports React and ReactDOM, as well as the main App component and a CSS file. It uses ReactDOM.createRoot to render the App component inside a React.StrictMode wrapper, which helps identify potential problems in the application during development.
-
-### App.js
-
-App.js contains the main application component and all the business logic. It's a functional component that uses React hooks (useState, useEffect) for state management. The component imports a large number of styled components from the StyledComponents.js file, which are used to build the UI.
-
-Key features of the App component include:
-
-- GitHub authentication using OAuth tokens
-- Repository listing and selection
-- File and directory navigation
-- File content viewing
-- **Large file upload functionality with Git LFS support**
-- **Robust path handling and validation**
-- File upload functionality with drag and drop support
-- Branch selection and navigation
-- **Enhanced notification system with progress tracking**
-
-The component maintains several state variables to track the application state, including authentication status, user information, repository data, file contents, and UI state for modals and notifications.
-
-### StyledComponents.js
-
-This file contains all the styled components used in the application, created using the styled-components library. The components are organized by their function in the application:
-
-- Layout components (AppContainer, MainContent, Content)
-- Header components (Header, Title, UserInfo)
-- Button components (LoginButton, LogoutButton, etc.)
-- Sidebar components (Sidebar, SidebarHeader, RepoList)
-- Repository components (RepositoryHeader, RepoName, BranchSelector)
-- Navigation components (PathNavigator, PathItem)
-- File explorer components (FileExplorer, FileItem)
-- Drag and drop components (DropZone)
-- Modal components for file uploads and previews
-- Notification components
-
-Each styled component is exported individually, allowing them to be imported and used in the App component.
-
-## Component Relationships
-
-The relationship between these files follows a clear separation of concerns:
-
-1. `index.js` handles the application initialization and mounting
-2. `App.js` contains all the business logic and state management
-3. `StyledComponents.js` provides the UI components with consistent styling
-
-The App component imports and uses the styled components to create the user interface, while the business logic within App.js controls the behavior of these components. This separation allows for easier maintenance and updates to either the UI or the business logic without affecting the other.
-
-The application follows a component-based architecture typical of React applications, with a clear hierarchy of components. The main App component serves as the container for all other components, managing the application state and passing data down to child components through props (in this case, through the styled components' props).
-
-## Styling Approach
-
-The application uses styled-components, a CSS-in-JS library that allows for component-level styling with the full power of JavaScript. This approach offers several advantages:
-
-1. Scoped styles that don't leak to other components
-2. Dynamic styling based on props (as seen in the RepoItem component that changes background color when selected)
-3. Theme consistency through the application
-4. Elimination of class name conflicts
-
-The styled components in this application follow GitHub's dark theme, with colors like #0d1117 for backgrounds and #c9d1d9 for text, creating a cohesive and professional look.
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js and npm installed
-- A GitHub account
-- A GitHub OAuth token for authentication
-- **Git LFS installed for large file support**
-
-### Installation
-
-1. Clone the repository
-2. Install dependencies:
-   ```
-   npm install
-   ```
-3. Start the development server:
-   ```
-   npm start
-   ```
-
-## Usage
-
-1. Log in with your GitHub token
-2. Select a repository from the sidebar
-3. Navigate through directories and view files
-4. **Upload files up to 2GB by dragging and dropping them into the designated area**
-5. **Large files (>100MB) will automatically use Git LFS**
-
-## Git LFS Requirements
-
-For repositories that will store large files:
-1. **Enable Git LFS** on the repository
-2. **Install Git LFS** locally: `git lfs install`
-3. **Configure LFS tracking** for file types: `git lfs track "*.zip"`
-4. **Ensure sufficient LFS storage quota** in GitHub
+### Option 3: Use Launcher Scripts
+- **Windows:** Double-click `START_GIT_HELPER.bat`
+- **Linux/Mac:** Run `./start_git_helper.sh`
 
 ---
 
-**Version:** Fixed v2.0 (Large File Support)  
+## Features
+
+### Core Features
+- GitHub authentication using OAuth tokens
+- Repository listing and selection
+- File and directory navigation
+- Branch selection and navigation
+- Drag and drop file upload
+- Notification system for user feedback
+
+### v3.1 Features (Latest)
+
+#### 🚀 Auto-Enable Git LFS
+When you upload a file larger than 35MB, the tool **automatically**:
+1. Creates/updates `.gitattributes` in your repository
+2. Configures LFS tracking for your file's extension
+3. Adds common large file patterns for future uploads
+4. Proceeds with the LFS upload - **no manual setup required!**
+
+**Pre-configured LFS patterns added automatically:**
+| Category | Extensions |
+|----------|------------|
+| Archives | `.zip`, `.7z`, `.rar`, `.tar.gz` |
+| Executables | `.exe`, `.dll`, `.so`, `.dylib` |
+| Documents | `.pdf`, `.psd`, `.ai` |
+| Video | `.mp4`, `.mov`, `.avi`, `.mkv` |
+| Audio | `.mp3`, `.wav`, `.flac` |
+| Disk Images | `.iso`, `.dmg` |
+
+#### 📦 ZIP File Extraction
+- Automatically detects and extracts `.zip` files
+- Uploads individual files while preserving folder structure
+- Skips hidden files and macOS metadata (`__MACOSX`)
+- Progress notification during extraction
+
+#### 📁 Multi-File Selection
+- Properly handles multiple file selection via drag & drop
+- All selected files are uploaded correctly
+- Works with both file selection and folder drops
+
+#### 💾 Large File Support (up to 2GB)
+- Files under 35MB: Direct GitHub API upload
+- Files 35MB - 2GB: Automatic Git LFS upload
+- SHA256 hash calculation for file integrity
+- Upload progress tracking with visual indicators
+
+---
+
+## File Size Limits
+
+| File Type | Size Limit | Upload Method |
+|-----------|------------|---------------|
+| Regular files | Up to 35 MB | Direct GitHub API |
+| Large files | 35 MB - 2 GB | Git LFS (auto-enabled) |
+| ZIP archives | Up to 2 GB | Extracted, individual files uploaded |
+
+---
+
+## Bug Fixes History
+
+### v3.1 - Auto-Enable LFS (January 2026)
+- ✅ Automatic `.gitattributes` creation for LFS tracking
+- ✅ No manual LFS setup required
+
+### v3.0 - Major Fixes (January 2026)
+- ✅ ZIP file extraction implemented
+- ✅ Multi-file selection fixed
+- ✅ Full Git LFS upload support (actual file upload, not just pointers)
+
+### v2.0 - Path Fixes (September 2025)
+- ✅ Malformed path errors resolved
+- ✅ Robust path normalization
+
+### v1.0 - Initial Release
+- Basic file upload functionality
+
+---
+
+## Project Structure
+
+```
+039-GitHelper/
+├── myapp.exe              # Windows executable (double-click to run)
+├── START_GIT_HELPER.bat   # Windows batch launcher
+├── start_git_helper.sh    # Linux/Mac shell launcher
+├── server.js              # Node.js server for the executable
+├── package.json           # Dependencies and scripts
+├── build/                 # Production build files
+│   ├── index.html
+│   └── static/
+│       ├── css/
+│       └── js/
+├── src/                   # Source code
+│   ├── App.js             # Main application component
+│   ├── index.js           # Entry point
+│   ├── index.css          # Global styles
+│   └── styles/
+│       └── StyledComponents.js  # UI components
+├── public/                # Public assets
+│   └── index.html
+├── README.md              # This file
+├── BUG_FIXES_SUMMARY.md   # Detailed bug fix documentation
+└── LAUNCHER_README.md     # Launcher usage instructions
+```
+
+---
+
+## Technical Details
+
+### Dependencies
+```json
+{
+  "@octokit/rest": "^22.0.0",
+  "jszip": "^3.10.1",
+  "react": "^19.1.0",
+  "styled-components": "^6.1.18",
+  "serve-handler": "^6.1.5",
+  "open": "^10.1.0"
+}
+```
+
+### How Git LFS Auto-Enable Works
+
+1. **Detection:** When files >35MB are dropped, the tool identifies them as LFS candidates
+2. **Extension Analysis:** Extracts file extensions (e.g., `.zip`, `.exe`)
+3. **Gitattributes Update:** Creates or updates `.gitattributes` with LFS tracking patterns
+4. **LFS Batch API:** Requests upload URL from GitHub's LFS batch endpoint
+5. **File Upload:** Uploads actual file content to LFS storage
+6. **Verification:** Confirms upload success with LFS server
+7. **Pointer Creation:** Creates LFS pointer file in the repository
+
+### Architecture
+
+The application follows a component-based architecture:
+
+1. **`index.js`** - Application initialization and mounting
+2. **`App.js`** - Business logic, state management, and API calls
+3. **`StyledComponents.js`** - UI components with GitHub dark theme styling
+
+The styling uses styled-components with GitHub's dark theme colors:
+- Background: `#0d1117`
+- Text: `#c9d1d9`
+- Accent: `#238636` (green for actions)
+
+---
+
+## Usage Guide
+
+### Authentication
+1. Generate a GitHub Personal Access Token with `repo` scope
+2. Click "Login with GitHub" in the application
+3. Enter your token when prompted
+
+### Uploading Files
+1. Select a repository from the sidebar
+2. Navigate to the desired directory
+3. Drag and drop files onto the drop zone
+4. Enter a commit message
+5. Click "Upload"
+
+### Uploading Large Files (>35MB)
+1. Simply drag and drop - LFS is configured automatically!
+2. The tool will show "Setting up Git LFS for this repository..."
+3. Files are uploaded to LFS storage
+4. LFS pointer files are created in the repository
+
+### Uploading ZIP Files
+1. Drag and drop a `.zip` file
+2. The tool automatically extracts contents
+3. All files are listed in the upload modal
+4. Folder structure is preserved
+
+---
+
+## Troubleshooting
+
+### "LFS upload failed" Error
+- Ensure your GitHub token has `repo` scope
+- Check your LFS storage quota (1GB free per account)
+- Verify the repository allows LFS
+
+### "Malformed path" Error
+- This should be fixed in v3.0+
+- If it persists, ensure file names don't contain special characters
+
+### Files Not Uploading
+- Check file size (max 2GB)
+- Ensure you're authenticated
+- Verify repository write permissions
+
+### Executable Doesn't Start
+- Ensure port 3000 is not in use
+- Try running as administrator
+- Check Windows Defender/antivirus settings
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+---
+
+## License
+
+This project is open source and available under the MIT License.
+
+---
+
+**Version:** 3.1  
 **Status:** Production Ready  
-**Max File Size:** 2GB with Git LFS support
+**Max File Size:** 2GB with auto-enabled Git LFS  
+**Last Updated:** January 2026
