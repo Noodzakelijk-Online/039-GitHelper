@@ -398,6 +398,115 @@ const App = () => {
     }
   };
 
+  // Auto-enable LFS for repository by creating/updating .gitattributes
+  const autoEnableLFS = async (owner, repo, branch, fileExtensions) => {
+    try {
+      showNotification('info', 'Setting up Git LFS for this repository...');
+      
+      // Get unique file extensions that need LFS
+      const uniqueExtensions = [...new Set(fileExtensions)];
+      
+      // Generate .gitattributes content for LFS tracking
+      const lfsPatterns = uniqueExtensions.map(ext => `*${ext} filter=lfs diff=lfs merge=lfs -text`);
+      
+      // Also add common large file patterns
+      const commonPatterns = [
+        '*.zip filter=lfs diff=lfs merge=lfs -text',
+        '*.7z filter=lfs diff=lfs merge=lfs -text',
+        '*.rar filter=lfs diff=lfs merge=lfs -text',
+        '*.tar.gz filter=lfs diff=lfs merge=lfs -text',
+        '*.exe filter=lfs diff=lfs merge=lfs -text',
+        '*.dll filter=lfs diff=lfs merge=lfs -text',
+        '*.so filter=lfs diff=lfs merge=lfs -text',
+        '*.dylib filter=lfs diff=lfs merge=lfs -text',
+        '*.pdf filter=lfs diff=lfs merge=lfs -text',
+        '*.psd filter=lfs diff=lfs merge=lfs -text',
+        '*.ai filter=lfs diff=lfs merge=lfs -text',
+        '*.mp4 filter=lfs diff=lfs merge=lfs -text',
+        '*.mov filter=lfs diff=lfs merge=lfs -text',
+        '*.avi filter=lfs diff=lfs merge=lfs -text',
+        '*.mkv filter=lfs diff=lfs merge=lfs -text',
+        '*.mp3 filter=lfs diff=lfs merge=lfs -text',
+        '*.wav filter=lfs diff=lfs merge=lfs -text',
+        '*.flac filter=lfs diff=lfs merge=lfs -text',
+        '*.iso filter=lfs diff=lfs merge=lfs -text',
+        '*.dmg filter=lfs diff=lfs merge=lfs -text'
+      ];
+      
+      let existingContent = '';
+      let existingFileSha = null;
+      
+      // Try to get existing .gitattributes file
+      try {
+        const { data: existingFile } = await octokit.repos.getContent({
+          owner,
+          repo,
+          path: '.gitattributes',
+          ref: branch
+        });
+        
+        if (existingFile.content) {
+          existingContent = atob(existingFile.content);
+          existingFileSha = existingFile.sha;
+        }
+      } catch (e) {
+        // File doesn't exist, we'll create it
+        console.log('.gitattributes does not exist, will create it');
+      }
+      
+      // Parse existing patterns to avoid duplicates
+      const existingPatterns = existingContent.split('\n').filter(line => line.trim());
+      const existingPatternSet = new Set(existingPatterns.map(p => p.split(' ')[0]));
+      
+      // Add new patterns that don't already exist
+      const newPatterns = [];
+      
+      for (const pattern of [...lfsPatterns, ...commonPatterns]) {
+        const patternKey = pattern.split(' ')[0];
+        if (!existingPatternSet.has(patternKey)) {
+          newPatterns.push(pattern);
+          existingPatternSet.add(patternKey);
+        }
+      }
+      
+      if (newPatterns.length === 0) {
+        console.log('LFS already configured for all required file types');
+        return true;
+      }
+      
+      // Combine existing and new content
+      const finalContent = existingContent.trim() 
+        ? existingContent.trim() + '\n' + newPatterns.join('\n') + '\n'
+        : '# Git LFS tracking (auto-configured by Git Helper)\n' + newPatterns.join('\n') + '\n';
+      
+      // Create or update .gitattributes file
+      await octokit.repos.createOrUpdateFileContents({
+        owner,
+        repo,
+        path: '.gitattributes',
+        message: 'Auto-configure Git LFS tracking for large files',
+        content: btoa(finalContent),
+        branch: branch,
+        ...(existingFileSha ? { sha: existingFileSha } : {})
+      });
+      
+      showNotification('success', 'Git LFS has been enabled for this repository');
+      return true;
+      
+    } catch (error) {
+      console.error('Error enabling LFS:', error);
+      showNotification('warning', `Could not auto-enable LFS: ${error.message}. You may need to enable it manually.`);
+      return false;
+    }
+  };
+
+  // Get file extension from filename
+  const getFileExtension = (filename) => {
+    const lastDot = filename.lastIndexOf('.');
+    if (lastDot === -1) return '';
+    return filename.substring(lastDot).toLowerCase();
+  };
+
   // Validate file before upload
   const validateFile = (file) => {
     const errors = [];
@@ -563,9 +672,39 @@ const App = () => {
 
       const baseTreeSha = commitData.tree.sha;
 
+      // Check if any files need LFS and auto-enable if necessary
+      const lfsFilesToUpload = uploadFiles.filter(f => needsLFS(f));
+      if (lfsFilesToUpload.length > 0) {
+        // Get file extensions that need LFS tracking
+        const lfsExtensions = lfsFilesToUpload.map(f => getFileExtension(f.relativePath || f.name)).filter(ext => ext);
+        
+        // Auto-enable LFS for this repository
+        await autoEnableLFS(owner, repo, currentBranch, lfsExtensions);
+        
+        // Need to get updated commit SHA after .gitattributes change
+        const { data: updatedRefData } = await octokit.git.getRef({
+          owner,
+          repo,
+          ref: `heads/${currentBranch}`
+        });
+        
+        const updatedCommitSha = updatedRefData.object.sha;
+        
+        // Get updated base tree
+        const { data: updatedCommitData } = await octokit.git.getCommit({
+          owner,
+          repo,
+          commit_sha: updatedCommitSha
+        });
+        
+        // Update the base tree SHA for our file uploads
+        Object.assign(commitData, updatedCommitData);
+      }
+
       // Create blobs for each file with progress tracking
       const fileBlobs = [];
       const lfsFiles = [];
+      const baseTreeShaFinal = commitData.tree.sha;
 
       for (let i = 0; i < uploadFiles.length; i++) {
         const file = uploadFiles[i];
@@ -633,13 +772,21 @@ const App = () => {
         }
       }
 
-      // Create tree
+      // Create tree (use updated base tree if LFS was auto-enabled)
       const { data: treeData } = await octokit.git.createTree({
         owner,
         repo,
-        base_tree: baseTreeSha,
+        base_tree: baseTreeShaFinal,
         tree: fileBlobs
       });
+
+      // Get the latest commit SHA (may have changed if LFS was auto-enabled)
+      const { data: latestRefData } = await octokit.git.getRef({
+        owner,
+        repo,
+        ref: `heads/${currentBranch}`
+      });
+      const parentCommitSha = latestRefData.object.sha;
 
       // Create commit
       const { data: newCommitData } = await octokit.git.createCommit({
@@ -647,7 +794,7 @@ const App = () => {
         repo,
         message: commitMessage,
         tree: treeData.sha,
-        parents: [latestCommitSha]
+        parents: [parentCommitSha]
       });
 
       // Update branch reference
